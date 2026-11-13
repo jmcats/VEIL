@@ -1,0 +1,1894 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VEIL — 3D Mystical Exploration Prototype</title>
+  <!-- Tailwind CSS for minimalist Game HUD & Journal -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Three.js Library -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <!-- Three.js Model Loaders (GLTF & OBJ) -->
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/OBJLoader.js"></script>
+  <!-- Cinematic Serif & Calligraphic Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;900&family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400;1,600&family=MedievalSharp&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --font-cinzel: 'Cinzel', serif;
+      --font-cormorant: 'Cormorant Garamond', Georgia, serif;
+      --font-book: 'MedievalSharp', cursive, serif;
+    }
+
+    body, html {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: #050608;
+      font-family: var(--font-cormorant);
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    #gameCanvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      display: block;
+      z-index: 1;
+    }
+
+    /* Screen-space Vignette overlay */
+    .vignette-layer {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 10;
+      box-shadow: inset 0 0 100px rgba(0,0,0,0.8), inset 0 0 180px rgba(0,0,0,0.7);
+      transition: box-shadow 1.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+
+    /* Reality Shift Distortion Flash */
+    #realityFlash {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 15;
+      background: radial-gradient(circle at center, transparent 30%, rgba(200, 160, 255, 0.3) 80%);
+      opacity: 0;
+      transition: opacity 0.8s ease-out;
+    }
+
+    /* Ancient Journal Scrollable Text */
+    .journal-content::-webkit-scrollbar {
+      width: 4px;
+    }
+    .journal-content::-webkit-scrollbar-thumb {
+      background: #8b7454;
+      border-radius: 4px;
+    }
+    .journal-content::-webkit-scrollbar-track {
+      background: rgba(40, 30, 20, 0.2);
+    }
+
+    /* Subtle pulsing glow for UI indicators */
+    @keyframes softPulse {
+      0%, 100% { opacity: 0.7; transform: scale(1); }
+      50% { opacity: 1; transform: scale(1.04); }
+    }
+    .pulse-glow {
+      animation: softPulse 3.5s infinite ease-in-out;
+    }
+
+    /* Parchment effect */
+    .parchment {
+      background-color: #dfd1b8;
+      background-image: 
+        radial-gradient(ellipse at 50% 50%, rgba(255,255,255,0.2) 0%, rgba(0,0,0,0.15) 100%),
+        repeating-linear-gradient(45deg, transparent, transparent 15px, rgba(140, 110, 80, 0.03) 15px, rgba(140, 110, 80, 0.03) 30px);
+      box-shadow: inset 0 0 50px rgba(92, 64, 40, 0.3), 0 20px 50px rgba(0,0,0,0.85);
+    }
+  </style>
+</head>
+
+<body class="relative">
+
+  <!-- 3D Canvas -->
+  <canvas id="gameCanvas"></canvas>
+
+  <!-- Atmospheric Vignette & Shift Overlay -->
+  <div id="vignette" class="vignette-layer"></div>
+  <div id="realityFlash"></div>
+
+  <!-- Minimal In-Game HUD -->
+  <div id="gameHUD" class="absolute inset-0 pointer-events-none z-20 flex flex-col justify-between p-6">
+    
+    <!-- Top-Center: Atmospheric Notification Banner -->
+    <div class="w-full flex justify-center items-start">
+      <div id="notificationBanner" class="opacity-0 transform -translate-y-4 transition-all duration-700 bg-[#120f17]/85 border border-[#52443a] text-[#ded4c5] px-6 py-2.5 rounded shadow-2xl backdrop-blur max-w-md text-center">
+        <p id="notificationText" class="font-['Cinzel'] text-xs sm:text-sm tracking-[0.2em] uppercase font-semibold text-[#f0e4cf]"></p>
+        <p id="notificationSubtext" class="text-[11px] text-[#9c8e7c] italic mt-0.5"></p>
+      </div>
+    </div>
+
+    <!-- Center Reticle / Contextual Prompt -->
+    <div class="flex flex-col items-center justify-center my-auto">
+      <div id="reticle" class="w-1.5 h-1.5 rounded-full bg-[#f3efe6]/40 transition-all duration-200"></div>
+      
+      <!-- Contextual Action Prompt -->
+      <div id="actionPrompt" class="mt-4 px-4 py-1.5 rounded-full bg-[#0a0a0f]/80 border border-[#4d4036]/60 backdrop-blur opacity-0 transition-opacity duration-300 flex items-center space-x-2">
+        <span class="w-5 h-5 rounded bg-[#b89568] text-[#120f0c] text-xs font-bold flex items-center justify-center font-mono">E</span>
+        <span id="promptLabel" class="font-['Cinzel'] text-xs text-[#eae2d3] tracking-wider">Inspect Ruin</span>
+      </div>
+    </div>
+
+    <!-- Backpack / Relics Inventory (Right Side) -->
+    <div id="backpackPanel" class="absolute right-6 top-[35%] flex flex-col gap-3 pointer-events-none">
+      <div class="text-right text-[10px] uppercase font-['Cinzel'] tracking-[0.2em] text-[#857a6e] mb-1 opacity-0 transition-opacity duration-500" id="backpackTitle">Wanderer's Pack</div>
+      
+      <div id="bp-vivianite" class="hidden flex items-center justify-end gap-3 opacity-0 transition-opacity duration-500">
+        <span class="text-[11px] font-['Cinzel'] text-[#00ffaa]">Vivianite Elixir</span>
+        <div class="w-8 h-8 rounded border border-[#1b4d3e] bg-[#0c1c16]/85 flex items-center justify-center backdrop-blur shadow-[0_0_8px_#00ffaa33]">
+          <div class="w-3 h-4 bg-[#00ffaa] rounded-sm opacity-80"></div>
+        </div>
+      </div>
+      
+      <div id="bp-carnelian" class="hidden flex items-center justify-end gap-3 opacity-0 transition-opacity duration-500">
+        <span class="text-[11px] font-['Cinzel'] text-[#ff6a26]">Carnelian Amulet</span>
+        <div class="w-8 h-8 rounded border border-[#6b2c14] bg-[#2a1309]/85 flex items-center justify-center backdrop-blur shadow-[0_0_8px_#ff6a2633]">
+          <div class="w-2.5 h-2.5 bg-[#ff6a26] rotate-45 opacity-90"></div>
+        </div>
+      </div>
+      
+      <div id="bp-citrine" class="hidden flex items-center justify-end gap-3 opacity-0 transition-opacity duration-500">
+        <span class="text-[11px] font-['Cinzel'] text-[#ffc83b]">Citrine Shard</span>
+        <div class="w-8 h-8 rounded border border-[#6b5614] bg-[#2a2409]/85 flex items-center justify-center backdrop-blur shadow-[0_0_8px_#ffc83b33]">
+          <div class="w-0 h-0 border-l-[4px] border-l-transparent border-r-[4px] border-r-transparent border-b-[8px] border-b-[#ffc83b] opacity-90"></div>
+        </div>
+      </div>
+      
+      <div id="bp-incense" class="hidden flex items-center justify-end gap-3 opacity-0 transition-opacity duration-500">
+        <span class="text-[11px] font-['Cinzel'] text-[#8ec7ff]">Cleansing Incense</span>
+        <div class="w-8 h-8 rounded border border-[#3b597a] bg-[#16212e]/85 flex items-center justify-center backdrop-blur shadow-[0_0_8px_#8ec7ff33]">
+          <div class="w-3 h-2 bg-[#d4af37] rounded-b-md opacity-90 relative"><div class="absolute -top-2 left-1 w-1 h-2 bg-[#8ec7ff] rounded-full opacity-70"></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bottom HUD Bar -->
+    <div class="flex items-end justify-between w-full">
+      
+      <!-- Current Realm / Active Perception Badge -->
+      <div class="flex flex-col gap-1">
+        <div class="flex items-center space-x-2 bg-[#0e0c10]/80 border border-[#2d2520] px-3.5 py-1.5 rounded text-xs backdrop-blur">
+          <div id="veilColorBeacon" class="w-2.5 h-2.5 rounded-full bg-[#827566]"></div>
+          <span class="text-[10px] uppercase font-['Cinzel'] tracking-widest text-[#857a6e]">Perception:</span>
+          <span id="veilStateLabel" class="font-['Cinzel'] text-xs font-semibold text-[#e0d6c8] tracking-wider">The Physical World</span>
+        </div>
+        <div class="text-[10px] text-[#6d6356] pl-1 font-mono">Press [F] or [R] to toggle mundane veil</div>
+      </div>
+
+      <!-- Quick Crystal Dock (Equipped & Count) -->
+      <div class="flex items-center gap-3">
+        <!-- Obsidian Slot (Key 1) -->
+        <div id="slotObsidian" class="relative group bg-[#110e17]/85 border border-[#3b2e52] px-3 py-2 rounded flex items-center gap-2.5 backdrop-blur transition-all duration-200">
+          <span class="text-[10px] font-mono text-[#a68acc] border border-[#4e3d6e] rounded px-1">1</span>
+          <div class="w-3.5 h-3.5 rotate-45 bg-[#25153d] border border-[#a874f2] shadow-[0_0_6px_#a874f2]"></div>
+          <div>
+            <div class="text-[11px] font-['Cinzel'] text-[#dfd4f0] font-semibold">Obsidian</div>
+            <div id="countObsidian" class="text-[10px] text-[#8e7da6] font-mono">0 collected</div>
+          </div>
+        </div>
+
+        <!-- Rose Quartz Slot (Key 2) -->
+        <div id="slotRose" class="relative group bg-[#170e12]/85 border border-[#522e38] px-3 py-2 rounded flex items-center gap-2.5 backdrop-blur transition-all duration-200">
+          <span class="text-[10px] font-mono text-[#cca4ae] border border-[#6e3d4c] rounded px-1">2</span>
+          <div class="w-3.5 h-3.5 rotate-45 bg-[#3d1521] border border-[#ff8aa9] shadow-[0_0_6px_#ff8aa9]"></div>
+          <div>
+            <div class="text-[11px] font-['Cinzel'] text-[#f5dce3] font-semibold">Rose Quartz</div>
+            <div id="countRose" class="text-[10px] text-[#a8828c] font-mono">0 collected</div>
+          </div>
+        </div>
+
+        <!-- Amethyst Slot (Key 3) -->
+        <div id="slotAmethyst" class="relative group bg-[#150f1c]/85 border border-[#483359] px-3 py-2 rounded flex items-center gap-2.5 backdrop-blur transition-all duration-200">
+          <span class="text-[10px] font-mono text-[#cb9ee3] border border-[#6d4d82] rounded px-1">3</span>
+          <div class="w-3.5 h-3.5 rotate-45 bg-[#2b173b] border border-[#c47bf0] shadow-[0_0_6px_#c47bf0]"></div>
+          <div>
+            <div class="text-[11px] font-['Cinzel'] text-[#edd4f7] font-semibold">Amethyst</div>
+            <div id="countAmethyst" class="text-[10px] text-[#ad8bbd] font-mono">0 collected</div>
+          </div>
+        </div>
+
+        <!-- Celestite Transcendence Slot (Key 4) -->
+        <div id="slotCelestite" class="relative group bg-[#0e1620]/85 border border-[#2b4459] px-3 py-2 rounded flex items-center gap-2.5 backdrop-blur transition-all duration-200">
+          <span class="text-[10px] font-mono text-[#9ed3f0] border border-[#3e6685] rounded px-1">4</span>
+          <div class="w-3.5 h-3.5 rotate-45 bg-[#122638] border border-[#66c2ff] shadow-[0_0_6px_#66c2ff]"></div>
+          <div>
+            <div class="text-[11px] font-['Cinzel'] text-[#daf0ff] font-semibold">Celestite</div>
+            <div id="countCelestite" class="text-[10px] text-[#7daec9] font-mono">0 collected</div>
+          </div>
+        </div>
+
+        <!-- Journal Button -->
+        <div class="border-l border-[#302720] pl-3">
+          <button id="openJournalBtn" class="pointer-events-auto bg-[#1c1814] hover:bg-[#2b241e] border border-[#6b5842] text-[#d6c7b2] px-3.5 py-2 rounded text-xs font-['Cinzel'] tracking-wider flex items-center gap-2 shadow-lg transition">
+            <svg class="w-4 h-4 fill-current text-[#b3956d]" viewBox="0 0 24 24"><path d="M19 2H6c-1.2 0-2 .8-2 2v16c0 1.2.8 2 2 2h13c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zM6 4h5v8l-2.5-1.5L6 12V4z"/></svg>
+            <span>Journal [TAB]</span>
+          </button>
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+
+  <!-- Start Screen & Pointer Lock Prompter -->
+  <div id="startScreen" class="absolute inset-0 z-50 flex items-center justify-center bg-[#06070a]/90 backdrop-blur-md transition-opacity duration-700">
+    <div class="max-w-lg p-8 rounded-xl bg-[#100e12] border border-[#40352c] text-center shadow-2xl relative">
+      <div class="w-12 h-12 mx-auto mb-4 border border-[#8f7753] rotate-45 flex items-center justify-center bg-[#1c1713]">
+        <div class="w-4 h-4 bg-[#c2a370] rotate-45"></div>
+      </div>
+      <h1 class="font-['Cinzel'] text-3xl sm:text-4xl tracking-[0.25em] text-[#e8ded1] font-bold mb-2">V E I L</h1>
+      <p class="text-xs uppercase tracking-[0.3em] text-[#91816e] mb-6 font-['Cinzel']">Prehistoric Fantasy 3D Exploration</p>
+      
+      <p class="text-sm text-[#b8aca0] leading-relaxed mb-6 italic">
+        "Start with nothing. Walk through ruins cold for ten thousand years. Discover crystals capable of rending reality. See beyond perception."
+      </p>
+
+      <div class="bg-[#171418] border border-[#2b242e] rounded-lg p-4 text-left text-xs space-y-2 mb-6 font-mono text-[#a69c8f]">
+        <div class="flex justify-between"><span class="text-[#cfc3b4]">WASD:</span><span>Walk & Navigate</span></div>
+        <div class="flex justify-between"><span class="text-[#cfc3b4]">Shift:</span><span>Sprint</span></div>
+        <div class="flex justify-between"><span class="text-[#cfc3b4]">Space:</span><span>Jump</span></div>
+        <div class="flex justify-between"><span class="text-[#cfc3b4]">Mouse:</span><span>Look Around (Pointer Lock)</span></div>
+        <div class="flex justify-between"><span class="text-[#cfc3b4]">E:</span><span>Gather Resource / Inspect / Claim Relic</span></div>
+        <div class="flex justify-between"><span class="text-[#cfc3b4]">1 / 2 / 3 / 4:</span><span>Equip Obsidian, Rose Quartz, Amethyst, or Celestite</span></div>
+        <div class="flex justify-between"><span class="text-[#cfc3b4]">F or Left-Click:</span><span>Consume Crystal & Pierce the Veil</span></div>
+        <div class="flex justify-between"><span class="text-[#cfc3b4]">TAB:</span><span>Toggle The Book of Enlightenment</span></div>
+      </div>
+
+      <button id="beginJourneyBtn" class="w-full py-3 rounded bg-[#826b48] hover:bg-[#a6885b] text-[#0f0e0c] font-['Cinzel'] font-bold text-sm tracking-[0.2em] uppercase transition shadow-lg">
+        Awaken Explorer
+      </button>
+      <div class="text-[11px] text-[#706456] mt-3">Clicking captures mouse cursor for fluid 3D control. Press ESC anytime.</div>
+    </div>
+  </div>
+
+  <!-- THE BOOK OF ENLIGHTENMENT (Press TAB) -->
+  <div id="journalModal" class="absolute inset-0 z-40 flex items-center justify-center bg-black/85 backdrop-blur-md opacity-0 pointer-events-none transition-opacity duration-500 p-4">
+    <div class="relative w-full max-w-4xl h-[85vh] max-h-[680px] parchment rounded-lg flex flex-col border-[12px] border-[#36271c] shadow-[0_0_80px_rgba(0,0,0,0.95)] overflow-hidden">
+      
+      <!-- Ancient Tome Header -->
+      <div class="w-full border-b-2 border-[#8c7454]/50 px-8 py-4 flex items-center justify-between">
+        <div class="flex items-center space-x-3">
+          <div class="w-6 h-6 border border-[#59432d] rotate-45 flex items-center justify-center">
+            <div class="w-2 h-2 bg-[#8c6b47]"></div>
+          </div>
+          <div>
+            <h2 class="font-['Cinzel'] text-lg font-bold text-[#3d2c1c] tracking-[0.2em] uppercase">The Book of Enlightenment</h2>
+            <p class="text-[11px] text-[#6e553c] italic">Mystical Tome of the Primal Wanderer</p>
+          </div>
+        </div>
+
+        <!-- Navigation Tabs inside Book -->
+        <div class="flex space-x-1 sm:space-x-3 font-['Cinzel'] text-xs">
+          <button data-tab="discoveries" class="journal-tab active-tab px-3 py-1 rounded border border-[#6b5239] bg-[#5e4732] text-[#f2e7d5] font-semibold transition">Discoveries</button>
+          <button data-tab="crystals" class="journal-tab px-3 py-1 rounded border border-transparent hover:border-[#8c7356] text-[#4d3826] font-semibold transition">Crystal Lore</button>
+          <button data-tab="memories" class="journal-tab px-3 py-1 rounded border border-transparent hover:border-[#8c7356] text-[#4d3826] font-semibold transition">Memories</button>
+          <button data-tab="relics" class="journal-tab px-3 py-1 rounded border border-transparent hover:border-[#8c7356] text-[#4d3826] font-semibold transition">Veil Relics</button>
+          <button data-tab="observations" class="journal-tab px-3 py-1 rounded border border-transparent hover:border-[#8c7356] text-[#4d3826] font-semibold transition">World</button>
+        </div>
+
+        <button id="closeJournalBtn" class="text-[#3b2b1d] hover:text-[#7d2e2e] text-2xl font-bold transition px-2">✕</button>
+      </div>
+
+      <!-- Book Two-Page Spread Layout -->
+      <div class="flex-1 grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x-2 divide-[#8c7454]/40 p-6 sm:p-8 overflow-hidden font-['MedievalSharp'] text-[#3b2b1d]">
+        
+        <!-- Left Page -->
+        <div class="pr-0 md:pr-6 flex flex-col justify-between overflow-y-auto journal-content">
+          <div id="journalLeftContent">
+            <!-- Dynamic Content Injected via Script -->
+          </div>
+          <div class="text-center text-[11px] font-['Cinzel'] tracking-widest text-[#735d45] border-t border-[#8c7454]/30 pt-3 mt-4">
+            Folio I • Inscriptions of the Awakening
+          </div>
+        </div>
+
+        <!-- Right Page -->
+        <div class="pl-0 md:pl-6 pt-4 md:pt-0 flex flex-col justify-between overflow-y-auto journal-content">
+          <div id="journalRightContent">
+            <!-- Dynamic Content Injected via Script -->
+          </div>
+          <div class="text-center text-[11px] font-['Cinzel'] tracking-widest text-[#735d45] border-t border-[#8c7454]/30 pt-3 mt-4">
+            Folio II • The Hidden Planes
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Tome Footer / Close helper -->
+      <div class="w-full bg-[#2e1f14] py-2 px-6 flex justify-between items-center text-[11px] font-['Cinzel'] text-[#b39e87]">
+        <span>Press [TAB] or [ESC] to seal the tome and resume sight</span>
+        <button id="resetFromJournalBtn" class="text-[#d9a882] hover:text-white underline">Reawaken from Start</button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Reset Confirmation Floating Button (Top Left Corner) -->
+  <button id="cornerResetBtn" class="absolute top-4 left-4 z-20 pointer-events-auto bg-[#120f0e]/80 hover:bg-[#241a15] border border-[#3b2d24] text-[#a89684] hover:text-[#eedfce] px-3 py-1.5 rounded text-[11px] font-['Cinzel'] tracking-widest uppercase transition flex items-center gap-1.5 shadow-md">
+    <span>↺ Reawaken</span>
+  </button>
+
+  <!-- =========================================================================
+       THREE.JS GAME ENGINE & GAMEPLAY PROGRAMMING
+       ========================================================================= -->
+  <script>
+    /* =======================================================================
+       1. GAME DATA & STATE
+       ======================================================================= */
+    const GAME = {
+      perception: 'mundane', // 'mundane' | 'obsidian' | 'rose' | 'amethyst' | 'celestite'
+      selectedCrystal: 'obsidian',
+      inventory: {
+        obsidian: 0,
+        rose: 0,
+        amethyst: 0,
+        celestite: 0,
+        branches: 0,
+        flint: 0,
+        glowFlora: 0,
+        // Reward Relics
+        vivianitePotion: 0,
+        carnelianAmulet: 0,
+        citrineShard: 0,
+        cleansingIncense: 0
+      },
+      discoveries: {
+        obsidian: false,
+        rose: false,
+        amethyst: false,
+        celestite: false,
+        houseFound: false,
+        obsidianMemory: false,
+        roseMemory: false,
+        amethystMemory: false,
+        spiritualAscension: false
+      },
+      isJournalOpen: false,
+      activeInteractable: null
+    };
+
+    /* =======================================================================
+       2. PROCEDURAL WEB AUDIO SYNTHESIZER
+       ======================================================================= */
+    class SoundEngine {
+      constructor() {
+        this.ctx = null;
+        this.master = null;
+        this.ambientGain = null;
+        this.droneOsc = null;
+        this.windGain = null;
+        this.filter = null;
+        this.stepTimer = 0;
+      }
+
+      init() {
+        if (this.ctx) return;
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        this.ctx = new AudioContext();
+        this.master = this.ctx.createGain();
+        this.master.gain.setValueAtTime(0.35, this.ctx.currentTime);
+        this.master.connect(this.ctx.destination);
+
+        // Wind / Ambience generator
+        const bufferSize = this.ctx.sampleRate * 2;
+        const noiseBuffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+        const output = noiseBuffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+          output[i] = Math.random() * 2 - 1;
+        }
+
+        const whiteNoise = this.ctx.createBufferSource();
+        whiteNoise.buffer = noiseBuffer;
+        whiteNoise.loop = true;
+
+        this.filter = this.ctx.createBiquadFilter();
+        this.filter.type = 'lowpass';
+        this.filter.frequency.setValueAtTime(260, this.ctx.currentTime);
+
+        this.windGain = this.ctx.createGain();
+        this.windGain.gain.setValueAtTime(0.08, this.ctx.currentTime);
+
+        whiteNoise.connect(this.filter);
+        this.filter.connect(this.windGain);
+        this.windGain.connect(this.master);
+        whiteNoise.start();
+
+        // Low mystical drone
+        this.droneOsc = this.ctx.createOscillator();
+        this.droneOsc.type = 'sine';
+        this.droneOsc.frequency.setValueAtTime(55, this.ctx.currentTime);
+        const droneGain = this.ctx.createGain();
+        droneGain.gain.setValueAtTime(0.05, this.ctx.currentTime);
+        this.droneOsc.connect(droneGain);
+        droneGain.connect(this.master);
+        this.droneOsc.start();
+      }
+
+      resume() {
+        if (this.ctx && this.ctx.state === 'suspended') {
+          this.ctx.resume();
+        }
+      }
+
+      playFootstep() {
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const g = this.ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(65 + Math.random() * 25, now);
+        osc.frequency.exponentialRampToValueAtTime(30, now + 0.12);
+        g.gain.setValueAtTime(0.06, now);
+        g.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+        osc.connect(g);
+        g.connect(this.master);
+        osc.start(now);
+        osc.stop(now + 0.12);
+      }
+
+      playTone(freq, duration = 0.5, type = 'sine', vol = 0.2) {
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const g = this.ctx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, now);
+        g.gain.setValueAtTime(vol, now);
+        g.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+        osc.connect(g);
+        g.connect(this.master);
+        osc.start(now);
+        osc.stop(now + duration);
+      }
+
+      playGatherSound() {
+        this.playTone(320, 0.25, 'triangle', 0.2);
+        setTimeout(() => this.playTone(480, 0.35, 'sine', 0.15), 60);
+      }
+
+      playCrystalGatherSound() {
+        this.playTone(523.25, 0.4, 'sine', 0.2);
+        setTimeout(() => this.playTone(659.25, 0.5, 'triangle', 0.2), 100);
+        setTimeout(() => this.playTone(783.99, 0.9, 'sine', 0.25), 220);
+      }
+
+      playShiftSound(veil) {
+        if (!this.ctx) return;
+        if (veil === 'obsidian') {
+          this.playTone(65, 1.8, 'sawtooth', 0.15);
+          setTimeout(() => this.playTone(92, 1.5, 'sine', 0.18), 150);
+          this.filter.frequency.exponentialRampToValueAtTime(140, this.ctx.currentTime + 1.2);
+        } else if (veil === 'rose') {
+          this.playTone(392, 1.2, 'sine', 0.18);
+          setTimeout(() => this.playTone(587.33, 1.5, 'triangle', 0.15), 120);
+          setTimeout(() => this.playTone(880, 2.0, 'sine', 0.12), 260);
+          this.filter.frequency.exponentialRampToValueAtTime(450, this.ctx.currentTime + 1.2);
+        } else if (veil === 'amethyst') {
+          this.playTone(293.66, 1.5, 'sine', 0.18);
+          setTimeout(() => this.playTone(440, 1.8, 'sine', 0.16), 140);
+          setTimeout(() => this.playTone(659.25, 2.2, 'triangle', 0.14), 280);
+          this.filter.frequency.exponentialRampToValueAtTime(320, this.ctx.currentTime + 1.2);
+        } else if (veil === 'celestite') {
+          this.playTone(220, 2.0, 'triangle', 0.2);
+          setTimeout(() => this.playTone(440, 2.5, 'sine', 0.2), 150);
+          setTimeout(() => this.playTone(880, 3.0, 'sine', 0.15), 350);
+        } else {
+          // Mundane
+          this.playTone(180, 0.8, 'sine', 0.15);
+          this.filter.frequency.exponentialRampToValueAtTime(260, this.ctx.currentTime + 0.8);
+        }
+      }
+    }
+    const audio = new SoundEngine();
+
+    /* =======================================================================
+       3. THREE.JS SCENE SETUP & LIGHTING
+       ======================================================================= */
+    const canvas = document.getElementById('gameCanvas');
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: "high-performance" });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 0.9;
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0c0f14);
+    scene.fog = new THREE.FogExp2(0x0c0f14, 0.022);
+
+    const camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.1, 350);
+
+    // Dynamic Lighting
+    const ambientLight = new THREE.AmbientLight(0x2a2f3a, 0.85);
+    scene.add(ambientLight);
+
+    const moonLight = new THREE.DirectionalLight(0x8fa3c7, 1.4);
+    moonLight.position.set(40, 60, -30);
+    moonLight.castShadow = true;
+    moonLight.shadow.mapSize.width = 2048;
+    moonLight.shadow.mapSize.height = 2048;
+    moonLight.shadow.camera.near = 10;
+    moonLight.shadow.camera.far = 160;
+    moonLight.shadow.camera.left = -50;
+    moonLight.shadow.camera.right = 50;
+    moonLight.shadow.camera.top = 50;
+    moonLight.shadow.camera.bottom = -50;
+    moonLight.shadow.bias = -0.001;
+    scene.add(moonLight);
+
+    // Ruin Hearth Fire / Point Light
+    const hearthPointLight = new THREE.PointLight(0xff6b3d, 0, 18);
+    hearthPointLight.position.set(-3.5, 1.4, 0);
+    scene.add(hearthPointLight);
+
+    /* =======================================================================
+       4. PROCEDURAL ENVIRONMENT GENERATION (TERRAIN, TREES, MEGALITHS)
+       ======================================================================= */
+    function getTerrainHeight(x, z) {
+      return Math.sin(x * 0.05) * 1.5 + Math.cos(z * 0.06) * 1.8 + Math.sin((x + z) * 0.03) * 2.2;
+    }
+
+    const terrainGeo = new THREE.PlaneGeometry(180, 180, 80, 80);
+    terrainGeo.rotateX(-Math.PI / 2);
+    const pos = terrainGeo.attributes.position;
+    for (let i = 0; i < pos.count; i++) {
+      const vx = pos.getX(i);
+      const vz = pos.getZ(i);
+      const distFromCenter = Math.hypot(vx, vz);
+      let h = getTerrainHeight(vx, vz);
+      if (distFromCenter < 14) {
+        h *= distFromCenter / 14;
+      }
+      pos.setY(i, h);
+    }
+    terrainGeo.computeVertexNormals();
+
+    const terrainMat = new THREE.MeshStandardMaterial({
+      color: 0x181c18,
+      roughness: 0.95,
+      metalness: 0.1,
+      flatShading: true
+    });
+    const terrainMesh = new THREE.Mesh(terrainGeo, terrainMat);
+    terrainMesh.receiveShadow = true;
+    scene.add(terrainMesh);
+
+    const stoneMat = new THREE.MeshStandardMaterial({ color: 0x242426, roughness: 0.9, flatShading: true });
+    const woodMat = new THREE.MeshStandardMaterial({ color: 0x1a1512, roughness: 0.95 });
+
+    for (let i = 0; i < 24; i++) {
+      const angle = (i / 24) * Math.PI * 2 + Math.random() * 0.2;
+      const radius = 22 + Math.random() * 45;
+      const x = Math.cos(angle) * radius;
+      const z = Math.sin(angle) * radius;
+      const y = getTerrainHeight(x, z);
+
+      if (i % 2 === 0) {
+        const h = 4.5 + Math.random() * 5;
+        const slabGeo = new THREE.BoxGeometry(1.6 + Math.random(), h, 0.8 + Math.random() * 0.6);
+        const slab = new THREE.Mesh(slabGeo, stoneMat);
+        slab.position.set(x, y + h / 2 - 0.4, z);
+        slab.rotation.y = Math.random() * Math.PI;
+        slab.rotation.z = (Math.random() - 0.5) * 0.15;
+        slab.castShadow = true;
+        slab.receiveShadow = true;
+        scene.add(slab);
+      } else {
+        const treeGroup = new THREE.Group();
+        const trunkGeo = new THREE.CylinderGeometry(0.2, 0.65, 5.5, 6);
+        const trunk = new THREE.Mesh(trunkGeo, woodMat);
+        trunk.position.y = 2.75;
+        trunk.castShadow = true;
+        treeGroup.add(trunk);
+
+        for (let b = 0; b < 3; b++) {
+          const branchGeo = new THREE.CylinderGeometry(0.08, 0.2, 2.8, 5);
+          const branch = new THREE.Mesh(branchGeo, woodMat);
+          branch.position.set(0, 3.5 + b * 0.6, 0);
+          branch.rotation.z = 0.7 * (b % 2 === 0 ? 1 : -1);
+          branch.rotation.y = (b * Math.PI) / 1.5;
+          branch.castShadow = true;
+          treeGroup.add(branch);
+        }
+        treeGroup.position.set(x, y - 0.2, z);
+        scene.add(treeGroup);
+      }
+    }
+
+    /* =======================================================================
+       5. THE CENTRAL ABANDONED HOUSE / RUIN
+       ======================================================================= */
+    const textureLoader = new THREE.TextureLoader();
+
+    function loadCrystalSprite(baseName, targetContainer, defaultFallbackMesh, scaleTarget = 1.2) {
+      // Temporarily show the 3D fallback mesh while the image loads
+      targetContainer.add(defaultFallbackMesh);
+
+      try {
+        textureLoader.load(
+          `GEMS/${baseName}.png`,
+          (texture) => {
+            // Once the 2D image successfully loads, remove the 3D fallback
+            targetContainer.clear();
+            
+            // Create a 2D Sprite material that respects transparency
+            const spriteMaterial = new THREE.SpriteMaterial({ 
+              map: texture, 
+              color: 0xffffff, 
+              transparent: true,
+              depthWrite: false 
+            });
+            
+            // Apply material to a Sprite (which always faces the camera)
+            const sprite = new THREE.Sprite(spriteMaterial);
+            sprite.scale.set(scaleTarget, scaleTarget, scaleTarget);
+            
+            targetContainer.add(sprite);
+          },
+          undefined,
+          (error) => {
+            console.warn(`Could not load 2D asset GEMS/${baseName}.png, retaining fallback.`, error);
+          }
+        );
+      } catch (e) {
+        console.warn(`Invalid URL environment for GEMS/${baseName}.png, retaining fallback.`, e);
+      }
+    }
+
+    const ruinGroup = new THREE.Group();
+    ruinGroup.position.set(0, 0, 0);
+    scene.add(ruinGroup);
+
+    const ruinWallMat = new THREE.MeshStandardMaterial({
+      color: 0x2b292c,
+      roughness: 0.88,
+      metalness: 0.08,
+      flatShading: true
+    });
+
+    const backWall = new THREE.Mesh(new THREE.BoxGeometry(14, 5.5, 0.9), ruinWallMat);
+    backWall.position.set(0, 2.75, -6);
+    backWall.castShadow = true;
+    backWall.receiveShadow = true;
+    ruinGroup.add(backWall);
+
+    const leftWall = new THREE.Mesh(new THREE.BoxGeometry(0.9, 5.5, 12), ruinWallMat);
+    leftWall.position.set(-6.5, 2.75, 0);
+    leftWall.castShadow = true;
+    leftWall.receiveShadow = true;
+    ruinGroup.add(leftWall);
+
+    const rightWall = new THREE.Mesh(new THREE.BoxGeometry(0.9, 5.5, 12), ruinWallMat);
+    rightWall.position.set(6.5, 2.75, 0);
+    rightWall.castShadow = true;
+    rightWall.receiveShadow = true;
+    ruinGroup.add(rightWall);
+
+    // Stone Pillars and Altar
+    const hearthBase = new THREE.Mesh(new THREE.CylinderGeometry(1.6, 1.8, 0.6, 8), stoneMat);
+    hearthBase.position.set(-3.5, 0.3, 0);
+    hearthBase.receiveShadow = true;
+    ruinGroup.add(hearthBase);
+
+    // --- OBSIDIAN HIDDEN ELEMENTS ---
+    const obsidianHiddenGroup = new THREE.Group();
+    obsidianHiddenGroup.visible = false;
+    scene.add(obsidianHiddenGroup);
+
+    // Ghostly Dark Silhouette of a kneeling hunter
+    const shadowFigureMat = new THREE.MeshStandardMaterial({
+      color: 0x120824,
+      emissive: 0x6e32cf,
+      emissiveIntensity: 0.5,
+      roughness: 0.3,
+      transparent: true,
+      opacity: 0.85
+    });
+    const shadowTorso = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.35, 1.2, 8), shadowFigureMat);
+    shadowTorso.position.set(3.8, 1.1, -1.2);
+    shadowTorso.rotation.x = 0.3;
+    obsidianHiddenGroup.add(shadowTorso);
+
+    const shadowHead = new THREE.Mesh(new THREE.SphereGeometry(0.22, 12, 12), shadowFigureMat);
+    shadowHead.position.set(3.8, 1.85, -1.05);
+    obsidianHiddenGroup.add(shadowHead);
+
+    // Occult Ceremonial Glass Dagger glowing in floor
+    const daggerGeo = new THREE.ConeGeometry(0.06, 0.5, 5);
+    const daggerMat = new THREE.MeshStandardMaterial({ color: 0xbd8eff, emissive: 0xaa70ff, emissiveIntensity: 1.2 });
+    const ritualDagger = new THREE.Mesh(daggerGeo, daggerMat);
+    ritualDagger.position.set(3.8, 0.95, -2.4);
+    ritualDagger.rotation.x = Math.PI;
+    obsidianHiddenGroup.add(ritualDagger);
+
+    // Runic Glyphs on back wall
+    const glyphGeo = new THREE.TorusGeometry(0.65, 0.04, 8, 24);
+    const runeMat = new THREE.MeshBasicMaterial({ color: 0xa46eff });
+    const rune1 = new THREE.Mesh(glyphGeo, runeMat);
+    rune1.position.set(0, 3.2, -5.45);
+    obsidianHiddenGroup.add(rune1);
+
+    // REWARD 1: Vivianite Potion / Elixir (Unveiled in Obsidian Veil)
+    const vivianiteGroup = new THREE.Group();
+    const fallbackVivianite = new THREE.Group();
+    const vialBottle = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.12, 0.16, 0.45, 8),
+      new THREE.MeshStandardMaterial({ color: 0x1b4d3e, roughness: 0.2, metalness: 0.3, transparent: true, opacity: 0.85 })
+    );
+    const vialLiquid = new THREE.Mesh(
+      new THREE.SphereGeometry(0.14, 8, 8),
+      new THREE.MeshStandardMaterial({ color: 0x00ffaa, emissive: 0x00bb77, emissiveIntensity: 0.9 })
+    );
+    vialLiquid.position.y = -0.05;
+    const vialCork = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.1, 6), woodMat);
+    vialCork.position.y = 0.26;
+    fallbackVivianite.add(vialBottle, vialLiquid, vialCork);
+    loadCrystalSprite('VIV', vivianiteGroup, fallbackVivianite, 1.2);
+    vivianiteGroup.position.set(3.4, 0.9, -2.5);
+    obsidianHiddenGroup.add(vivianiteGroup);
+
+    // --- ROSE QUARTZ HIDDEN ELEMENTS ---
+    const roseHiddenGroup = new THREE.Group();
+    roseHiddenGroup.visible = false;
+    scene.add(roseHiddenGroup);
+
+    // Reborn Warm Spirit Fire at the Hearth
+    const spiritFireGeo = new THREE.ConeGeometry(0.5, 1.1, 7);
+    const spiritFireMat = new THREE.MeshBasicMaterial({ color: 0xff8ca8, wireframe: false });
+    const spiritFire = new THREE.Mesh(spiritFireGeo, spiritFireMat);
+    spiritFire.position.set(-3.5, 0.9, 0);
+    roseHiddenGroup.add(spiritFire);
+
+    // Ethereal silhouettes of two ancient inhabitants in embrace
+    const roseGhostMat = new THREE.MeshStandardMaterial({
+      color: 0xffa8be,
+      emissive: 0xff547d,
+      emissiveIntensity: 0.6,
+      transparent: true,
+      opacity: 0.75,
+      roughness: 0.4
+    });
+
+    const ghostA = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.32, 1.6, 8), roseGhostMat);
+    ghostA.position.set(-0.2, 1.2, 0);
+    roseHiddenGroup.add(ghostA);
+
+    const ghostB = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.3, 1.5, 8), roseGhostMat);
+    ghostB.position.set(0.3, 1.15, 0.1);
+    ghostB.rotation.z = -0.15;
+    roseHiddenGroup.add(ghostB);
+
+    const ghostHeadA = new THREE.Mesh(new THREE.SphereGeometry(0.2, 12, 12), roseGhostMat);
+    ghostHeadA.position.set(-0.15, 2.1, 0);
+    roseHiddenGroup.add(ghostHeadA);
+
+    const ghostHeadB = new THREE.Mesh(new THREE.SphereGeometry(0.18, 12, 12), roseGhostMat);
+    ghostHeadB.position.set(0.22, 2.05, 0.1);
+    roseHiddenGroup.add(ghostHeadB);
+
+    // Blooming Spirit Vines with Rose Flora
+    const vineMat = new THREE.MeshStandardMaterial({ color: 0xff6688, emissive: 0x992244, emissiveIntensity: 0.3 });
+    for (let v = 0; v < 16; v++) {
+      const bloom = new THREE.Mesh(new THREE.DodecahedronGeometry(0.12), vineMat);
+      bloom.position.set(-6.5 + (v % 4) * 0.4, 1.0 + v * 0.22, -5.5 + Math.sin(v) * 1.5);
+      roseHiddenGroup.add(bloom);
+    }
+
+    // REWARD 2: Carnelian Amulet (Unveiled in Rose Quartz Veil at the hearth)
+    const carnelianGroup = new THREE.Group();
+    const fallbackCarnelian = new THREE.Group();
+    const cordTorus = new THREE.Mesh(
+      new THREE.TorusGeometry(0.16, 0.02, 6, 16),
+      new THREE.MeshStandardMaterial({ color: 0x4a2a1a, roughness: 0.9 })
+    );
+    const gemPendant = new THREE.Mesh(
+      new THREE.OctahedronGeometry(0.15, 0),
+      new THREE.MeshStandardMaterial({ color: 0xff4d14, emissive: 0xff6a26, emissiveIntensity: 1.1, roughness: 0.2 })
+    );
+    gemPendant.position.y = -0.1;
+    fallbackCarnelian.add(cordTorus, gemPendant);
+    loadCrystalSprite('CARN', carnelianGroup, fallbackCarnelian, 1.0);
+    carnelianGroup.position.set(-3.5, 0.75, 0.8);
+    roseHiddenGroup.add(carnelianGroup);
+
+    // --- AMETHYST HIDDEN ELEMENTS (Calm & Serenity) ---
+    const amethystHiddenGroup = new THREE.Group();
+    amethystHiddenGroup.visible = false;
+    scene.add(amethystHiddenGroup);
+
+    // Tranquil ancestral meditation ring
+    const calmRingGeo = new THREE.RingGeometry(1.6, 2.2, 16);
+    calmRingGeo.rotateX(-Math.PI / 2);
+    const calmRingMat = new THREE.MeshBasicMaterial({ color: 0xc47bf0, side: THREE.DoubleSide, transparent: true, opacity: 0.6 });
+    const calmRing = new THREE.Mesh(calmRingGeo, calmRingMat);
+    calmRing.position.set(0, 0.08, 0);
+    amethystHiddenGroup.add(calmRing);
+
+    // Gentle spirit wisps floating peacefully
+    for (let w = 0; w < 10; w++) {
+      const wisp = new THREE.Mesh(
+        new THREE.SphereGeometry(0.1, 6, 6),
+        new THREE.MeshStandardMaterial({ color: 0xe0aaff, emissive: 0xb55fe6, emissiveIntensity: 1.2 })
+      );
+      wisp.position.set(
+        Math.cos(w) * 3 + (Math.random() - 0.5),
+        1.2 + Math.sin(w * 2) * 0.5,
+        Math.sin(w) * 3 + (Math.random() - 0.5)
+      );
+      amethystHiddenGroup.add(wisp);
+    }
+
+    // REWARD 3: Citrine Shard Cluster (Unveiled in Amethyst Veil)
+    const citrineGroup = new THREE.Group();
+    const fallbackCitrine = new THREE.Group();
+    const citrineMat = new THREE.MeshStandardMaterial({
+      color: 0xffaa00,
+      emissive: 0xffc83b,
+      emissiveIntensity: 1.2,
+      roughness: 0.15,
+      metalness: 0.4
+    });
+    for (let c = 0; c < 5; c++) {
+      const spire = new THREE.Mesh(new THREE.ConeGeometry(0.08 + c * 0.02, 0.45 + c * 0.08, 5), citrineMat);
+      spire.position.set((c - 2) * 0.08, 0.2, (Math.random() - 0.5) * 0.1);
+      spire.rotation.z = (c - 2) * 0.18;
+      fallbackCitrine.add(spire);
+    }
+    loadCrystalSprite('CIT', citrineGroup, fallbackCitrine, 1.2);
+    citrineGroup.position.set(0, 0.2, 0);
+    amethystHiddenGroup.add(citrineGroup);
+
+    // --- CELESTITE TRANSCENDENCE / SPIRITUAL PLANE SKY ISLANDS ---
+    const spiritualPlaneGroup = new THREE.Group();
+    spiritualPlaneGroup.position.set(0, 90, 0); // High in celestial void
+    spiritualPlaneGroup.visible = false;
+    scene.add(spiritualPlaneGroup);
+
+    // Surreal floating crystalline monoliths in the spiritual plane
+    const spireMat = new THREE.MeshStandardMaterial({
+      color: 0x82b2ff,
+      emissive: 0x3366cc,
+      emissiveIntensity: 0.8,
+      roughness: 0.2,
+      metalness: 0.8
+    });
+    for (let s = 0; s < 12; s++) {
+      const island = new THREE.Mesh(new THREE.OctahedronGeometry(2 + Math.random() * 3, 0), spireMat);
+      island.position.set(
+        (Math.random() - 0.5) * 60,
+        (Math.random() - 0.5) * 18,
+        (Math.random() - 0.5) * 60
+      );
+      island.rotation.set(Math.random(), Math.random(), 0);
+      spiritualPlaneGroup.add(island);
+    }
+
+    // Celestial Altar Platform in Spiritual Plane
+    const celestialAltar = new THREE.Mesh(
+      new THREE.CylinderGeometry(2.5, 3.2, 0.8, 12),
+      new THREE.MeshStandardMaterial({ color: 0x1b2845, roughness: 0.3, metalness: 0.7 })
+    );
+    celestialAltar.position.set(0, 0, 0);
+    spiritualPlaneGroup.add(celestialAltar);
+
+    // REWARD 4: Cleansing Incense of the Veil (Inside Spiritual Plane)
+    const incenseGroup = new THREE.Group();
+    const censerBowl = new THREE.Mesh(
+      new THREE.SphereGeometry(0.28, 8, 8, 0, Math.PI * 2, 0, Math.PI * 0.5),
+      new THREE.MeshStandardMaterial({ color: 0xd4af37, metalness: 0.8, roughness: 0.2 })
+    );
+    censerBowl.rotation.x = Math.PI;
+    const smokeMote = new THREE.Mesh(
+      new THREE.OctahedronGeometry(0.12),
+      new THREE.MeshStandardMaterial({ color: 0xcfe8ff, emissive: 0x8ec7ff, emissiveIntensity: 1.5, transparent: true, opacity: 0.9 })
+    );
+    smokeMote.position.y = 0.2;
+    incenseGroup.add(censerBowl, smokeMote);
+    incenseGroup.position.set(0, 0.55, 0);
+    spiritualPlaneGroup.add(incenseGroup);
+
+    /* =======================================================================
+       7. ATMOSPHERIC SPORE / EMBER PARTICLES
+       ======================================================================= */
+    const particleCount = 200;
+    const particleGeo = new THREE.BufferGeometry();
+    const particlePos = new Float32Array(particleCount * 3);
+    for (let p = 0; p < particleCount * 3; p += 3) {
+      particlePos[p] = (Math.random() - 0.5) * 50;
+      particlePos[p + 1] = Math.random() * 10;
+      particlePos[p + 2] = (Math.random() - 0.5) * 50;
+    }
+    particleGeo.setAttribute('position', new THREE.BufferAttribute(particlePos, 3));
+    const particleMat = new THREE.PointsMaterial({
+      color: 0xc8bfa8,
+      size: 0.15,
+      transparent: true,
+      opacity: 0.6,
+      blending: THREE.AdditiveBlending
+    });
+    const particleSystem = new THREE.Points(particleGeo, particleMat);
+    scene.add(particleSystem);
+
+    /* =======================================================================
+       8. INTERACTABLE OBJECTS & CRYSTAL NODES IN ENVIRONMENT
+       ======================================================================= */
+    const interactables = [];
+
+    function createInteractable(type, name, mesh, promptText, onInteract) {
+      scene.add(mesh);
+      const item = {
+        type,
+        name,
+        mesh,
+        prompt: promptText,
+        interact: onInteract,
+        collected: false
+      };
+      interactables.push(item);
+      return item;
+    }
+
+    // Material 1: Dry Branches (Stage 2)
+    const branchMesh = new THREE.Group();
+    for (let b = 0; b < 4; b++) {
+      const stick = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.05, 0.9, 4), woodMat);
+      stick.rotation.set(Math.random(), Math.random(), Math.random());
+      branchMesh.add(stick);
+    }
+    branchMesh.position.set(7, getTerrainHeight(7, 4) + 0.1, 4);
+    createInteractable('branch', 'Dry Branches', branchMesh, 'Gather Dry Branches', () => {
+      GAME.inventory.branches += 3;
+      audio.playGatherSound();
+      showNotification("Collected: Dry Branches", "Basic fuel and primitive tool crafting material.");
+      recordJournalEntry('materials', 'Dry Branches', 'Sturdy deadfall gathered near the stone ruins. Essential for kindling or bindings.');
+    });
+
+    // Material 2: Flint Stones (Stage 2)
+    const flintGroup = new THREE.Group();
+    const stone1 = new THREE.Mesh(new THREE.DodecahedronGeometry(0.22), stoneMat);
+    const stone2 = new THREE.Mesh(new THREE.DodecahedronGeometry(0.18), stoneMat);
+    stone2.position.set(0.2, 0, 0.1);
+    flintGroup.add(stone1, stone2);
+    flintGroup.position.set(-8, getTerrainHeight(-8, 5) + 0.15, 5);
+    createInteractable('flint', 'Flint Stones', flintGroup, 'Collect Sharp Flint', () => {
+      GAME.inventory.flint += 2;
+      audio.playGatherSound();
+      showNotification("Collected: Sharp Flint", "Heavy mineral with fractured razor edges.");
+      recordJournalEntry('materials', 'Flint Core', 'Dense siliceous stone found half-buried. Sparks easily against ironstone.');
+    });
+
+    // Material 3: Mystic Glow Flora
+    const floraMesh = new THREE.Mesh(
+      new THREE.SphereGeometry(0.25, 8, 8),
+      new THREE.MeshStandardMaterial({ color: 0x55ffaa, emissive: 0x22aa66, emissiveIntensity: 0.9 })
+    );
+    floraMesh.position.set(-6, getTerrainHeight(-6, -10) + 0.25, -10);
+    createInteractable('glowFlora', 'Luminous Moss', floraMesh, 'Harvest Luminous Moss', () => {
+      GAME.inventory.glowFlora += 1;
+      audio.playGatherSound();
+      showNotification("Collected: Luminous Moss", "Soft bioluminescent vegetation thriving in stone shadows.");
+      recordJournalEntry('materials', 'Luminous Moss', 'Spongy, glowing lichen scraped from cold bedrock. Emits a steady phosphorescence.');
+    });
+
+    /* =======================================================================
+       GEMS FOLDER 2D ASSET LOADER (OBSI, RQ, AME, CELE)
+       ======================================================================= */
+    // CRYSTAL 1: Obsidian (GEMS/OBSI.png)
+    const obsidianContainer = new THREE.Group();
+    const fallbackObsidian = new THREE.Mesh(
+      new THREE.OctahedronGeometry(0.35, 0),
+      new THREE.MeshStandardMaterial({
+        color: 0x0a0512,
+        emissive: 0x8244d4,
+        emissiveIntensity: 0.8,
+        roughness: 0.1,
+        metalness: 0.9
+      })
+    );
+    loadCrystalSprite('OBSI', obsidianContainer, fallbackObsidian, 1.4);
+    obsidianContainer.position.set(10, getTerrainHeight(10, 10) + 0.9, 10);
+    const obsidianItem = createInteractable('obsidian_crystal', 'Obsidian Crystal', obsidianContainer, 'Harvest Obsidian', () => {
+      GAME.inventory.obsidian += 2;
+      GAME.discoveries.obsidian = true;
+      audio.playCrystalGatherSound();
+      showNotification("New Discovery: Obsidian", "Something unfamiliar resonates within the dark crystal.");
+      recordJournalEntry('crystals', 'Obsidian — The Dark Veil', 'Dense volcanic glass with an abyssal violet pulse. Consuming it peels back reality to show hidden shadows, dark memories, and concealed artifacts.');
+      updateCrystalUI();
+    });
+
+    // CRYSTAL 2: Rose Quartz (GEMS/RQ.png)
+    const roseContainer = new THREE.Group();
+    const fallbackRose = new THREE.Mesh(
+      new THREE.DodecahedronGeometry(0.32),
+      new THREE.MeshStandardMaterial({
+        color: 0x3d1220,
+        emissive: 0xff6688,
+        emissiveIntensity: 0.85,
+        roughness: 0.2
+      })
+    );
+    loadCrystalSprite('RQ', roseContainer, fallbackRose, 1.4);
+    roseContainer.position.set(-12, getTerrainHeight(-12, 4) + 1.1, 4);
+    const roseItem = createInteractable('rose_crystal', 'Rose Quartz Cluster', roseContainer, 'Harvest Rose Quartz', () => {
+      GAME.inventory.rose += 2;
+      GAME.discoveries.rose = true;
+      audio.playCrystalGatherSound();
+      showNotification("New Discovery: Rose Quartz", "A soft warmth pulses within the rose stone.");
+      recordJournalEntry('crystals', 'Rose Quartz — Relational Echoes', 'Warm crystalline mineral carrying emotional resonances. Crushing this crystal reveals memories of previous dwellers, spirits, and relational traces.');
+      updateCrystalUI();
+    });
+
+    // CRYSTAL 3: Amethyst (GEMS/AME.png)
+    const amethystContainer = new THREE.Group();
+    const fallbackAmethyst = new THREE.Mesh(
+      new THREE.OctahedronGeometry(0.38, 0),
+      new THREE.MeshStandardMaterial({
+        color: 0x3d1747,
+        emissive: 0xbf6bf0,
+        emissiveIntensity: 0.85,
+        roughness: 0.15
+      })
+    );
+    loadCrystalSprite('AME', amethystContainer, fallbackAmethyst, 1.5);
+    amethystContainer.position.set(16, getTerrainHeight(16, -14) + 1.2, -14);
+    const amethystItem = createInteractable('amethyst_crystal', 'Amethyst Cluster', amethystContainer, 'Harvest Amethyst', () => {
+      GAME.inventory.amethyst += 2;
+      GAME.discoveries.amethyst = true;
+      audio.playCrystalGatherSound();
+      showNotification("New Discovery: Amethyst", "A tranquil vibration soothes the wanderer's restless thoughts.");
+      recordJournalEntry('crystals', 'Amethyst — Tranquility', 'A gentle violet crystal radiating unyielding peace. Piercing reality reveals tranquil memories and ancestral rings free of despair.');
+      updateCrystalUI();
+    });
+
+    // CRYSTAL 4: Celestite (GEMS/CELE.png)
+    const celestiteContainer = new THREE.Group();
+    const fallbackCelestite = new THREE.Mesh(
+      new THREE.ConeGeometry(0.32, 0.85, 6),
+      new THREE.MeshStandardMaterial({
+        color: 0x14344d,
+        emissive: 0x66c2ff,
+        emissiveIntensity: 0.95,
+        roughness: 0.1
+      })
+    );
+    loadCrystalSprite('CELE', celestiteContainer, fallbackCelestite, 1.8);
+    celestiteContainer.position.set(-15, getTerrainHeight(-15, -16) + 1.4, -16);
+    const celestiteItem = createInteractable('celestite_crystal', 'Celestite Spire', celestiteContainer, 'Commune with Celestite', () => {
+      GAME.inventory.celestite += 1;
+      GAME.discoveries.celestite = true;
+      audio.playCrystalGatherSound();
+      showNotification("New Discovery: Celestite Spire", "Possesses transcendent properties capable of lifting soul above stone.");
+      recordJournalEntry('crystals', 'Celestite — Transcendence', 'Sky-blue crystal harboring celestial frequencies. Crushing this shard unbinds the physical anchor and permits transcendence into the Spiritual Plane.');
+      updateCrystalUI();
+    });
+
+    // --- INTERACTIVE VEIL REWARDS & RELICS ---
+
+    // 1. Vivianite Potion in Obsidian Veil
+    const vivianiteWorldInteract = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.8, 0.8), new THREE.MeshBasicMaterial({ visible: false }));
+    vivianiteWorldInteract.position.copy(vivianiteGroup.position);
+    createInteractable('relic_vivianite', 'Vivianite Elixir', vivianiteWorldInteract, 'Claim Vivianite Elixir', () => {
+      GAME.inventory.vivianitePotion += 1;
+      audio.playCrystalGatherSound();
+      showNotification("Relic Claimed: Vivianite Elixir", "Revives vitality, purges sickness, and stabilizes the fragile mortal frame.");
+      recordJournalEntry('relics', 'Vivianite Elixir', 'Discovered locked inside the dark Obsidian veil. A mineral distillate that revives spent stamina and re-knits bone against lethal exhaustion.');
+      obsidianHiddenGroup.remove(vivianiteGroup);
+      updateBackpackUI();
+    });
+
+    // 2. Carnelian Amulet in Rose Quartz Veil
+    const carnelianWorldInteract = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.8, 0.8), new THREE.MeshBasicMaterial({ visible: false }));
+    carnelianWorldInteract.position.set(-3.5, 0.75, 0.8);
+    createInteractable('relic_carnelian', 'Carnelian Amulet', carnelianWorldInteract, 'Claim Carnelian Amulet', () => {
+      GAME.inventory.carnelianAmulet += 1;
+      audio.playCrystalGatherSound();
+      showNotification("Relic Claimed: Carnelian Amulet", "A talisman of courage & burning warmth. Defends against freezing blight and dispels terror.");
+      recordJournalEntry('relics', 'Carnelian Amulet', 'Unearthed at the ghost hearth in the Rose Quartz veil. Radiates ancestral warmth, rendering the wearer impervious to primeval winter frost and paralyzing despair.');
+      roseHiddenGroup.remove(carnelianGroup);
+      updateBackpackUI();
+    });
+
+    // 3. Citrine Shard in Amethyst Veil
+    const citrineWorldInteract = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.8, 0.8), new THREE.MeshBasicMaterial({ visible: false }));
+    citrineWorldInteract.position.set(0, 0.3, 0);
+    createInteractable('relic_citrine', 'Citrine Shard Cluster', citrineWorldInteract, 'Harvest Citrine Shards', () => {
+      GAME.inventory.citrineShard += 1;
+      audio.playCrystalGatherSound();
+      showNotification("Crystal Reward: Citrine Cluster", "Pure solar optimism. Dispels mental fog and sharpens instinct for hidden resources.");
+      recordJournalEntry('relics', 'Citrine of Serenity', 'Found nested inside the meditative ring of the Amethyst veil. Carries the sunny warmth of midday; dissolves spiritual miasma and grants acute awareness of buried wilderness caches.');
+      amethystHiddenGroup.remove(citrineGroup);
+      updateBackpackUI();
+    });
+
+    // 4. Cleansing Incense in Celestite Transcendence (Spiritual Plane)
+    const incenseWorldInteract = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.2, 1.2), new THREE.MeshBasicMaterial({ visible: false }));
+    incenseWorldInteract.position.set(0, 90.6, 0);
+    createInteractable('relic_incense', 'Cleansing Incense of the Veil', incenseWorldInteract, 'Claim Purifying Incense', () => {
+      GAME.inventory.cleansingIncense += 1;
+      audio.playCrystalGatherSound();
+      showNotification("Sacred Relic: Cleansing Incense", "Cleanses ancient curses and unseals impassable warded gateways.");
+      recordJournalEntry('relics', 'Purifying Incense of the Veil', 'Retrieved from the celestial altar within the Spiritual Plane. Its smoke burns with otherworldly azure light, dissolving ancient seal-wards and cleansing contaminated sanctuaries that mortals cannot breach.');
+      spiritualPlaneGroup.remove(incenseGroup);
+      updateBackpackUI();
+    });
+
+    // Environmental Point of Interest: Ruin Hearth (Contextual Inspection)
+    const hearthInspectTarget = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.2, 1.6), new THREE.MeshBasicMaterial({ visible: false }));
+    hearthInspectTarget.position.set(-3.5, 0.8, 0);
+    createInteractable('hearth_poi', 'Ancient Basalt Hearth', hearthInspectTarget, 'Inspect Hearth Pit', () => {
+      audio.playTone(280, 0.4, 'sine', 0.15);
+      if (GAME.perception === 'rose') {
+        showNotification("Memory Witnessed: Living Hearth", "The spirits rekindle their fire against primeval frost.");
+        recordJournalEntry('memories', 'The Living Hearth', 'Through the Rose Quartz, the ashes roared into pink flame. Two souls huddled together, safe against an ancient winter storm.');
+        GAME.discoveries.roseMemory = true;
+      } else if (GAME.perception === 'obsidian') {
+        showNotification("Dark Trace Revealed", "Charred offerings and ritual marks carved into cold soot.");
+        recordJournalEntry('memories', 'Ashen Rites', 'The Obsidian reveals burnt bone fragments beneath the grate, inscribed with warding sigils against the abyss.');
+        GAME.discoveries.obsidianMemory = true;
+      } else if (GAME.perception === 'amethyst') {
+        showNotification("Sanctuary of Peace", "The hearth radiates a tranquil hush, untouched by grief or violence.");
+        recordJournalEntry('memories', 'The Silent Sanctuary', 'Beneath the Amethyst veil, the hearth represents a solemn resting place where old hunters lay down their spears in total harmony.');
+        GAME.discoveries.amethystMemory = true;
+      } else {
+        showNotification("Cold Ashes", "Petrified wood and cold stone. It has not burned in ten thousand years.");
+        recordJournalEntry('observations', 'The Basalt Hearth', 'A massive fire pit propped inside the stone shelter. Stripped of heat by centuries of relentless weather.');
+      }
+    });
+
+    /* =======================================================================
+       9. THIRD-PERSON PLAYER CHARACTER (ANIMATED PROCEDURAL HUMANOID)
+       ======================================================================= */
+    const playerGroup = new THREE.Group();
+    playerGroup.position.set(0, getTerrainHeight(0, 14), 14);
+    scene.add(playerGroup);
+
+    // Dynamic ground contact shadow blob underneath feet
+    const shadowGeo = new THREE.PlaneGeometry(1.4, 1.4);
+    shadowGeo.rotateX(-Math.PI / 2);
+    const shadowMat = new THREE.MeshBasicMaterial({
+      color: 0x020406,
+      transparent: true,
+      opacity: 0.65,
+      depthWrite: false
+    });
+    const contactShadow = new THREE.Mesh(shadowGeo, shadowMat);
+    contactShadow.position.y = 0.02;
+    playerGroup.add(contactShadow);
+
+    // Explorer Model Body Parts
+    const skinMat = new THREE.MeshStandardMaterial({ color: 0x8a6346, roughness: 0.8 });
+    const furMat = new THREE.MeshStandardMaterial({ color: 0x2e231c, roughness: 0.95 });
+
+    const characterRig = new THREE.Group();
+    playerGroup.add(characterRig);
+
+    // Torso / Tunic
+    const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.38, 1.05, 7), furMat);
+    torso.position.y = 1.25;
+    torso.castShadow = true;
+    characterRig.add(torso);
+
+    // Head & primitive cowl
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.24, 8, 8), skinMat);
+    head.position.y = 1.98;
+    head.castShadow = true;
+    characterRig.add(head);
+
+    const cowl = new THREE.Mesh(new THREE.ConeGeometry(0.32, 0.45, 6), furMat);
+    cowl.position.set(0, 2.05, -0.05);
+    cowl.rotation.x = -0.2;
+    characterRig.add(cowl);
+
+    // Limbs with hip pivot anchors
+    const leftHip = new THREE.Group();
+    leftHip.position.set(-0.2, 0.75, 0);
+    const leftLegMesh = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.75, 0.18), furMat);
+    leftLegMesh.position.y = -0.375;
+    leftLegMesh.castShadow = true;
+    leftHip.add(leftLegMesh);
+    characterRig.add(leftHip);
+
+    const rightHip = new THREE.Group();
+    rightHip.position.set(0.2, 0.75, 0);
+    const rightLegMesh = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.75, 0.18), furMat);
+    rightLegMesh.position.y = -0.375;
+    rightLegMesh.castShadow = true;
+    rightHip.add(rightLegMesh);
+    characterRig.add(rightHip);
+
+    // Arms
+    const leftArm = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.7, 0.14), furMat);
+    leftArm.position.set(-0.42, 1.35, 0);
+    leftArm.castShadow = true;
+    characterRig.add(leftArm);
+
+    const rightArm = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.7, 0.14), furMat);
+    rightArm.position.set(0.42, 1.35, 0);
+    rightArm.castShadow = true;
+    characterRig.add(rightArm);
+
+    // Crystal Shard held in player's right hand
+    const handCrystalGeo = new THREE.OctahedronGeometry(0.1, 0);
+    const handCrystalMat = new THREE.MeshBasicMaterial({ color: 0x9359eb });
+    const handCrystal = new THREE.Mesh(handCrystalGeo, handCrystalMat);
+    handCrystal.position.set(0, -0.38, 0.15);
+    rightArm.add(handCrystal);
+
+    /* =======================================================================
+       10. INPUT, CAMERA CONTROLS & PHYSICS LOOPS
+       ======================================================================= */
+    const keys = {};
+    const mouse = { x: 0, y: 0 };
+    let cameraPitch = 0.2;
+    let cameraYaw = Math.PI;
+    let cameraDistance = 5.2;
+    let isPointerLocked = false;
+    let verticalVelocity = 0;
+    let isGrounded = true;
+    let animTimer = 0;
+
+    window.addEventListener('keydown', (e) => {
+      // TAB key for the Book of Enlightenment
+      if (e.code === 'Tab') {
+        e.preventDefault();
+        toggleJournal();
+        return;
+      }
+
+      keys[e.code] = true;
+
+      // Quick Crystal Selection (1, 2, 3, 4)
+      if (e.code === 'Digit1') selectCrystal('obsidian');
+      if (e.code === 'Digit2') selectCrystal('rose');
+      if (e.code === 'Digit3') selectCrystal('amethyst');
+      if (e.code === 'Digit4') selectCrystal('celestite');
+
+      // Interact (E)
+      if (e.code === 'KeyE') {
+        interactContext();
+      }
+
+      // Perception Pierce (F or R)
+      if (e.code === 'KeyF' || e.code === 'KeyR') {
+        activatePerceptionVeil();
+      }
+    });
+
+    window.addEventListener('keyup', (e) => {
+      keys[e.code] = false;
+    });
+
+    // Mouse Pointer Lock
+    document.getElementById('beginJourneyBtn').addEventListener('click', () => {
+      audio.init();
+      audio.resume();
+      document.body.requestPointerLock();
+      document.getElementById('startScreen').classList.add('opacity-0', 'pointer-events-none');
+      showNotification("The Awakening", "An unfamiliar world stretches before you.");
+      recordJournalEntry('observations', 'The Threshold', 'Woke cold upon primeval moss. The basalt pillars of an abandoned human house stand before me.');
+    });
+
+    document.addEventListener('pointerlockchange', () => {
+      isPointerLocked = document.pointerLockElement === document.body;
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (!isPointerLocked) return;
+      const sensitivity = 0.0022;
+      cameraYaw -= e.movementX * sensitivity;
+      cameraPitch -= e.movementY * sensitivity;
+      cameraPitch = Math.max(-0.4, Math.min(1.2, cameraPitch));
+    });
+
+    window.addEventListener('mousedown', (e) => {
+      if (e.button === 0 && isPointerLocked) {
+        activatePerceptionVeil();
+      }
+    });
+
+    /* =======================================================================
+       11. VEIL PERCEPTION MECHANIC (CONSUMPTION & ATMOSPHERIC SHIFT)
+       ======================================================================= */
+    function selectCrystal(type) {
+      GAME.selectedCrystal = type;
+      updateCrystalUI();
+      audio.playTone(480, 0.15, 'sine', 0.1);
+      
+      const names = { obsidian: 'Obsidian', rose: 'Rose Quartz', amethyst: 'Amethyst', celestite: 'Celestite' };
+      showNotification(`Equipped: ${names[type]}`, "Press [F] or Left-Click to consume shard and pierce the veil.");
+    }
+
+    function activatePerceptionVeil() {
+      audio.init();
+      audio.resume();
+
+      // If already in a veil, return to mundane without consuming
+      if (GAME.perception !== 'mundane') {
+        shiftReality('mundane');
+        showNotification("Veil Dissipated", "Returned to the physical plane.");
+        return;
+      }
+
+      // Check crystal count
+      const crystalType = GAME.selectedCrystal;
+      if (GAME.inventory[crystalType] <= 0) {
+        showNotification("Crystal Depleted", `You have no ${crystalType} shards to crush.`);
+        audio.playTone(140, 0.3, 'sawtooth', 0.15);
+        return;
+      }
+
+      // Consume Crystal
+      GAME.inventory[crystalType]--;
+      updateCrystalUI();
+      audio.playShiftSound(crystalType);
+
+      // Trigger Screen Flash & Reality Shift
+      const flash = document.getElementById('realityFlash');
+      flash.style.opacity = '0.9';
+      setTimeout(() => { flash.style.opacity = '0'; }, 600);
+
+      shiftReality(crystalType);
+      showNotification(`Crystal Consumed: ${crystalType.toUpperCase()}`, "The physical veil shatters. Hidden layers awaken.");
+    }
+
+    function shiftReality(mode) {
+      GAME.perception = mode;
+      const vignette = document.getElementById('vignette');
+      const beacon = document.getElementById('veilColorBeacon');
+      const label = document.getElementById('veilStateLabel');
+
+      if (mode === 'obsidian') {
+        // Deep violet occult reality
+        scene.background.set(0x0a0514);
+        scene.fog.color.set(0x0a0514);
+        moonLight.color.set(0x9d67eb);
+        moonLight.intensity = 0.8;
+        ambientLight.color.set(0x38195e);
+
+        obsidianHiddenGroup.visible = true;
+        roseHiddenGroup.visible = false;
+        amethystHiddenGroup.visible = false;
+        spiritualPlaneGroup.visible = false;
+        hearthPointLight.intensity = 0;
+
+        vignette.style.boxShadow = 'inset 0 0 120px rgba(22, 6, 38, 0.95), inset 0 0 200px rgba(12, 2, 22, 0.9)';
+        beacon.style.backgroundColor = '#a874f2';
+        label.textContent = "Obsidian Veil (Darkness & Memory)";
+
+      } else if (mode === 'rose') {
+        // Ethereal rose-gold twilight
+        scene.background.set(0x1a0d14);
+        scene.fog.color.set(0x1a0d14);
+        moonLight.color.set(0xff99bb);
+        moonLight.intensity = 1.3;
+        ambientLight.color.set(0x542636);
+
+        obsidianHiddenGroup.visible = false;
+        roseHiddenGroup.visible = true;
+        amethystHiddenGroup.visible = false;
+        spiritualPlaneGroup.visible = false;
+        hearthPointLight.intensity = 2.2;
+
+        vignette.style.boxShadow = 'inset 0 0 120px rgba(46, 12, 25, 0.85), inset 0 0 180px rgba(35, 8, 18, 0.85)';
+        beacon.style.backgroundColor = '#ff8aa9';
+        label.textContent = "Rose Quartz Veil (Love & Echoes)";
+
+      } else if (mode === 'amethyst') {
+        // Soft calming lavender serenity
+        scene.background.set(0x140d1c);
+        scene.fog.color.set(0x140d1c);
+        moonLight.color.set(0xd496ff);
+        moonLight.intensity = 1.1;
+        ambientLight.color.set(0x402052);
+
+        obsidianHiddenGroup.visible = false;
+        roseHiddenGroup.visible = false;
+        amethystHiddenGroup.visible = true;
+        spiritualPlaneGroup.visible = false;
+        hearthPointLight.intensity = 0.6;
+
+        vignette.style.boxShadow = 'inset 0 0 120px rgba(35, 15, 45, 0.85), inset 0 0 180px rgba(25, 10, 35, 0.8)';
+        beacon.style.backgroundColor = '#c47bf0';
+        label.textContent = "Amethyst Veil (Tranquility & Peace)";
+
+      } else if (mode === 'celestite') {
+        // Transcendence to spiritual plane
+        playerGroup.position.set(0, 92, 0);
+        scene.background.set(0x040817);
+        scene.fog.color.set(0x040817);
+        moonLight.color.set(0x73a8ff);
+        moonLight.intensity = 1.5;
+
+        obsidianHiddenGroup.visible = false;
+        roseHiddenGroup.visible = false;
+        amethystHiddenGroup.visible = false;
+        spiritualPlaneGroup.visible = true;
+
+        vignette.style.boxShadow = 'inset 0 0 140px rgba(10, 24, 60, 0.9)';
+        beacon.style.backgroundColor = '#66c2ff';
+        label.textContent = "Spiritual Plane (Transcendence)";
+        GAME.discoveries.spiritualAscension = true;
+        recordJournalEntry('memories', 'Transcendence Plane', 'Cast off physical gravity. The mind floated among floating celestial megaliths suspended in cosmic quiet.');
+
+      } else {
+        // Mundane Physical Reality
+        if (playerGroup.position.y > 60) {
+          playerGroup.position.set(0, getTerrainHeight(0, 14), 14);
+        }
+        scene.background.set(0x0c0f14);
+        scene.fog.color.set(0x0c0f14);
+        moonLight.color.set(0x8fa3c7);
+        moonLight.intensity = 1.4;
+        ambientLight.color.set(0x2a2f3a);
+
+        obsidianHiddenGroup.visible = false;
+        roseHiddenGroup.visible = false;
+        amethystHiddenGroup.visible = false;
+        spiritualPlaneGroup.visible = false;
+        hearthPointLight.intensity = 0;
+
+        vignette.style.boxShadow = 'inset 0 0 100px rgba(0,0,0,0.8), inset 0 0 180px rgba(0,0,0,0.7)';
+        beacon.style.backgroundColor = '#827566';
+        label.textContent = "The Physical World";
+      }
+    }
+
+    /* =======================================================================
+       12. INTERACTION DETECTION & EXECUTION
+       ======================================================================= */
+    function checkProximityInteractions() {
+      const promptEl = document.getElementById('actionPrompt');
+      const labelEl = document.getElementById('promptLabel');
+      let nearest = null;
+      let minDist = 3.2;
+
+      for (const item of interactables) {
+        if (item.collected) continue;
+
+        // Veil-gated interactable conditions
+        if (item.type === 'relic_vivianite' && GAME.perception !== 'obsidian') continue;
+        if (item.type === 'relic_carnelian' && GAME.perception !== 'rose') continue;
+        if (item.type === 'relic_citrine' && GAME.perception !== 'amethyst') continue;
+        if (item.type === 'relic_incense' && GAME.perception !== 'celestite') continue;
+
+        const d = playerGroup.position.distanceTo(item.mesh.position);
+        if (d < minDist) {
+          minDist = d;
+          nearest = item;
+        }
+      }
+
+      GAME.activeInteractable = nearest;
+      if (nearest) {
+        labelEl.textContent = nearest.prompt;
+        promptEl.style.opacity = '1';
+      } else {
+        promptEl.style.opacity = '0';
+      }
+    }
+
+    function interactContext() {
+      if (!GAME.activeInteractable) return;
+      const target = GAME.activeInteractable;
+      target.interact();
+
+      // If it is a consumable world node, remove/hide it
+      if (['branch', 'flint', 'glowFlora', 'obsidian_crystal', 'rose_crystal', 'amethyst_crystal', 'celestite_crystal', 'relic_vivianite', 'relic_carnelian', 'relic_citrine', 'relic_incense'].includes(target.type)) {
+        target.collected = true;
+        scene.remove(target.mesh);
+        document.getElementById('actionPrompt').style.opacity = '0';
+      }
+    }
+
+    /* =======================================================================
+       13. THE BOOK OF ENLIGHTENMENT (JOURNAL SYSTEM)
+       ======================================================================= */
+    const journalDatabase = {
+      discoveries: [
+        { title: "Primal Exploration", body: "The journey begins with bare hands and stone. By gathering flint and timber, survival becomes feasible." }
+      ],
+      crystals: [
+        { title: "Crystal Resonances", body: "Crystals are finite lenses into lost dimensions. They shatter upon attunement, granting temporary communion with forgotten states of existence." }
+      ],
+      relics: [],
+      memories: [],
+      observations: []
+    };
+
+    function recordJournalEntry(category, title, body) {
+      if (!journalDatabase[category]) journalDatabase[category] = [];
+      const exists = journalDatabase[category].some(e => e.title === title);
+      if (!exists) {
+        journalDatabase[category].push({ title, body });
+        showNotification("Journal Updated", `New entry recorded in the Book of Enlightenment: "${title}"`);
+        renderJournalTab(currentJournalTab);
+      }
+    }
+
+    let currentJournalTab = 'discoveries';
+
+    function renderJournalTab(tab) {
+      currentJournalTab = tab;
+      const leftCol = document.getElementById('journalLeftContent');
+      const rightCol = document.getElementById('journalRightContent');
+      leftCol.innerHTML = '';
+      rightCol.innerHTML = '';
+
+      const entries = journalDatabase[tab] || [];
+
+      // Render tab title
+      const tabTitles = {
+        discoveries: "Collected Relics & Materials",
+        crystals: "Mineral Knowledge & Resonances",
+        relics: "Sacred Relics & Talismans",
+        memories: "Echoes of the Former Dwellers",
+        observations: "Chronicles of the Earth"
+      };
+
+      const h = document.createElement('h3');
+      h.className = "font-['Cinzel'] text-sm tracking-widest uppercase font-bold text-[#4a3523] border-b border-[#8c7454]/40 pb-2 mb-4";
+      h.textContent = tabTitles[tab] || "Folio";
+      leftCol.appendChild(h);
+
+      if (entries.length === 0) {
+        leftCol.innerHTML += `<p class="italic text-[#75624e] text-xs">No entries have manifested within these pages yet. Explore deeper into the wild ruins to unveil knowledge.</p>`;
+        return;
+      }
+
+      entries.forEach((item, index) => {
+        const box = document.createElement('div');
+        box.className = "mb-4 pb-3 border-b border-[#8c7454]/20";
+        box.innerHTML = `
+          <div class="font-['Cinzel'] text-xs font-semibold tracking-wider text-[#3d2c1c]">${item.title}</div>
+          <div class="text-xs text-[#523d2a] leading-relaxed mt-1 italic">${item.body}</div>
+        `;
+
+        if (index % 2 === 0) {
+          leftCol.appendChild(box);
+        } else {
+          rightCol.appendChild(box);
+        }
+      });
+    }
+
+    function toggleJournal() {
+      const modal = document.getElementById('journalModal');
+      GAME.isJournalOpen = !GAME.isJournalOpen;
+
+      if (GAME.isJournalOpen) {
+        document.exitPointerLock();
+        modal.classList.remove('opacity-0', 'pointer-events-none');
+        modal.classList.add('opacity-100');
+        renderJournalTab(currentJournalTab);
+        audio.playTone(340, 0.25, 'triangle', 0.15);
+      } else {
+        modal.classList.add('opacity-0', 'pointer-events-none');
+        modal.classList.remove('opacity-100');
+        document.body.requestPointerLock();
+        audio.playTone(280, 0.2, 'triangle', 0.15);
+      }
+    }
+
+    document.getElementById('openJournalBtn').addEventListener('click', toggleJournal);
+    document.getElementById('closeJournalBtn').addEventListener('click', toggleJournal);
+
+    document.querySelectorAll('.journal-tab').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.journal-tab').forEach(b => {
+          b.className = "journal-tab px-3 py-1 rounded border border-transparent hover:border-[#8c7356] text-[#4d3826] font-semibold transition";
+        });
+        btn.className = "journal-tab active-tab px-3 py-1 rounded border border-[#6b5239] bg-[#5e4732] text-[#f2e7d5] font-semibold transition";
+        renderJournalTab(btn.dataset.tab);
+        audio.playTone(400, 0.1, 'sine', 0.1);
+      });
+    });
+
+    /* =======================================================================
+       14. HUD NOTIFICATIONS & DOCK COUNTERS
+       ======================================================================= */
+    let notifTimeout = null;
+    function showNotification(title, subtext = "") {
+      const banner = document.getElementById('notificationBanner');
+      const titleEl = document.getElementById('notificationText');
+      const subEl = document.getElementById('notificationSubtext');
+
+      titleEl.textContent = title;
+      subEl.textContent = subtext;
+
+      banner.classList.remove('opacity-0', '-translate-y-4');
+      banner.classList.add('opacity-100', 'translate-y-0');
+
+      clearTimeout(notifTimeout);
+      notifTimeout = setTimeout(() => {
+        banner.classList.remove('opacity-100', 'translate-y-0');
+        banner.classList.add('opacity-0', '-translate-y-4');
+      }, 4200);
+    }
+
+    function updateCrystalUI() {
+      document.getElementById('countObsidian').textContent = `${GAME.inventory.obsidian} left`;
+      document.getElementById('countRose').textContent = `${GAME.inventory.rose} left`;
+      document.getElementById('countAmethyst').textContent = `${GAME.inventory.amethyst} left`;
+      document.getElementById('countCelestite').textContent = `${GAME.inventory.celestite} left`;
+
+      // Hand crystal color update
+      if (GAME.selectedCrystal === 'obsidian') handCrystal.material.color.set(0x9359eb);
+      else if (GAME.selectedCrystal === 'rose') handCrystal.material.color.set(0xff6688);
+      else if (GAME.selectedCrystal === 'amethyst') handCrystal.material.color.set(0xc47bf0);
+      else if (GAME.selectedCrystal === 'celestite') handCrystal.material.color.set(0x66c2ff);
+
+      // Highlight active slot
+      ['Obsidian', 'Rose', 'Amethyst', 'Celestite'].forEach(name => {
+        const el = document.getElementById(`slot${name}`);
+        if (GAME.selectedCrystal === name.toLowerCase()) {
+          el.classList.add('ring-1', 'ring-[#c9ad7d]');
+        } else {
+          el.classList.remove('ring-1', 'ring-[#c9ad7d]');
+        }
+      });
+    }
+
+    function updateBackpackUI() {
+      let hasItems = false;
+
+      if (GAME.inventory.vivianitePotion > 0) {
+        const el = document.getElementById('bp-vivianite');
+        el.classList.remove('hidden');
+        setTimeout(() => el.classList.remove('opacity-0'), 50);
+        hasItems = true;
+      } else {
+        document.getElementById('bp-vivianite').classList.add('hidden', 'opacity-0');
+      }
+
+      if (GAME.inventory.carnelianAmulet > 0) {
+        const el = document.getElementById('bp-carnelian');
+        el.classList.remove('hidden');
+        setTimeout(() => el.classList.remove('opacity-0'), 50);
+        hasItems = true;
+      } else {
+        document.getElementById('bp-carnelian').classList.add('hidden', 'opacity-0');
+      }
+
+      if (GAME.inventory.citrineShard > 0) {
+        const el = document.getElementById('bp-citrine');
+        el.classList.remove('hidden');
+        setTimeout(() => el.classList.remove('opacity-0'), 50);
+        hasItems = true;
+      } else {
+        document.getElementById('bp-citrine').classList.add('hidden', 'opacity-0');
+      }
+
+      if (GAME.inventory.cleansingIncense > 0) {
+        const el = document.getElementById('bp-incense');
+        el.classList.remove('hidden');
+        setTimeout(() => el.classList.remove('opacity-0'), 50);
+        hasItems = true;
+      } else {
+        document.getElementById('bp-incense').classList.add('hidden', 'opacity-0');
+      }
+
+      const title = document.getElementById('backpackTitle');
+      if (hasItems) {
+        title.classList.remove('opacity-0');
+      } else {
+        title.classList.add('opacity-0');
+      }
+    }
+
+    // Reset Function
+    function restartGame() {
+      GAME.inventory = {
+        obsidian: 0,
+        rose: 0,
+        amethyst: 0,
+        celestite: 0,
+        branches: 0,
+        flint: 0,
+        glowFlora: 0,
+        vivianitePotion: 0,
+        carnelianAmulet: 0,
+        citrineShard: 0,
+        cleansingIncense: 0
+      };
+      GAME.discoveries = {
+        obsidian: false,
+        rose: false,
+        amethyst: false,
+        celestite: false,
+        houseFound: false,
+        obsidianMemory: false,
+        roseMemory: false,
+        amethystMemory: false,
+        spiritualAscension: false
+      };
+      GAME.perception = 'mundane';
+      shiftReality('mundane');
+      playerGroup.position.set(0, getTerrainHeight(0, 14), 14);
+      cameraYaw = Math.PI;
+      cameraPitch = 0.2;
+      updateCrystalUI();
+      updateBackpackUI();
+      if (GAME.isJournalOpen) toggleJournal();
+      showNotification("Reawakened", "The journey resets. The wild stone remains silent.");
+    }
+
+    document.getElementById('cornerResetBtn').addEventListener('click', restartGame);
+    document.getElementById('resetFromJournalBtn').addEventListener('click', restartGame);
+
+    /* =======================================================================
+       15. MAIN GAME LOOP (PHYSICS, ANIMATION & RENDERING)
+       ======================================================================= */
+    const clock = new THREE.Clock();
+
+    function animate() {
+      requestAnimationFrame(animate);
+      const delta = Math.min(clock.getDelta(), 0.1);
+
+      // Character Movement & Physics
+      const moveSpeed = keys['ShiftLeft'] || keys['ShiftRight'] ? 8.2 : 4.4;
+      const moveDir = new THREE.Vector3();
+
+      if (keys['KeyW']) moveDir.z -= 1;
+      if (keys['KeyS']) moveDir.z += 1;
+      if (keys['KeyA']) moveDir.x -= 1;
+      if (keys['KeyD']) moveDir.x += 1;
+
+      const isMoving = moveDir.lengthSq() > 0;
+
+      if (isMoving && !GAME.isJournalOpen) {
+        moveDir.normalize();
+
+        const angle = cameraYaw;
+        const forward = new THREE.Vector3(-Math.sin(angle), 0, -Math.cos(angle));
+        const right = new THREE.Vector3(Math.cos(angle), 0, -Math.sin(angle));
+
+        const displacement = new THREE.Vector3()
+          .addScaledVector(right, moveDir.x)
+          .addScaledVector(forward, -moveDir.z)
+          .normalize()
+          .multiplyScalar(moveSpeed * delta);
+
+        playerGroup.position.add(displacement);
+
+        const targetRot = Math.atan2(displacement.x, displacement.z);
+        playerGroup.rotation.y = targetRot;
+
+        animTimer += delta * (moveSpeed * 1.5);
+        leftHip.rotation.x = Math.sin(animTimer) * 0.55;
+        rightHip.rotation.x = -Math.sin(animTimer) * 0.55;
+        leftArm.rotation.x = -Math.sin(animTimer) * 0.45;
+        rightArm.rotation.x = Math.sin(animTimer) * 0.4;
+
+        characterRig.position.y = -Math.abs(Math.sin(animTimer)) * 0.05;
+
+        audio.stepTimer += delta * moveSpeed;
+        if (audio.stepTimer > 2.8) {
+          audio.stepTimer = 0;
+          audio.playFootstep();
+        }
+      } else {
+        leftHip.rotation.x = THREE.MathUtils.lerp(leftHip.rotation.x, 0, 0.12);
+        rightHip.rotation.x = THREE.MathUtils.lerp(rightHip.rotation.x, 0, 0.12);
+        leftArm.rotation.x = THREE.MathUtils.lerp(leftArm.rotation.x, 0, 0.12);
+        rightArm.rotation.x = THREE.MathUtils.lerp(rightArm.rotation.x, 0, 0.12);
+        characterRig.position.y = THREE.MathUtils.lerp(characterRig.position.y, 0, 0.1);
+      }
+
+      // Jump & Gravity (Terrain Snapping)
+      if (keys['Space'] && isGrounded && !GAME.isJournalOpen) {
+        verticalVelocity = 6.2;
+        isGrounded = false;
+        audio.playTone(180, 0.15, 'triangle', 0.1);
+      }
+
+      verticalVelocity -= 18.0 * delta;
+      playerGroup.position.y += verticalVelocity * delta;
+      // Ground collision: exact terrain height calculation under player position
+      let groundH = getTerrainHeight(playerGroup.position.x, playerGroup.position.z);
+      if (Math.hypot(playerGroup.position.x, playerGroup.position.z) < 14) {
+        groundH *= Math.hypot(playerGroup.position.x, playerGroup.position.z) / 14;
+      }
+      if (GAME.perception === 'celestite') {
+        groundH = 90; // High celestial platform plane
+      }
+
+      if (playerGroup.position.y <= groundH) {
+        playerGroup.position.y = groundH;
+        verticalVelocity = 0;
+        isGrounded = true;
+      }
+
+      if (contactShadow) {
+        const heightAboveGround = Math.max(0, playerGroup.position.y - groundH);
+        contactShadow.position.y = -heightAboveGround + 0.02;
+        const shadowScale = Math.max(0.3, 1.0 - heightAboveGround * 0.18);
+        contactShadow.scale.set(shadowScale, shadowScale, shadowScale);
+        contactShadow.material.opacity = Math.max(0.15, 0.65 - heightAboveGround * 0.12);
+      }
+
+      // Smooth Third-Person Camera
+      const cameraTarget = playerGroup.position.clone().add(new THREE.Vector3(0, 1.45, 0));
+      
+      const camX = cameraTarget.x + Math.sin(cameraYaw) * Math.cos(cameraPitch) * cameraDistance;
+      const camY = cameraTarget.y + Math.sin(cameraPitch) * cameraDistance;
+      const camZ = cameraTarget.z + Math.cos(cameraYaw) * Math.cos(cameraPitch) * cameraDistance;
+      // Keep camera above ground level
+      let groundAtCam = getTerrainHeight(camX, camZ);
+      if (Math.hypot(camX, camZ) < 14) {
+        groundAtCam *= Math.hypot(camX, camZ) / 14;
+      }
+      if (GAME.perception === 'celestite') {
+        groundAtCam = 90;
+      }
+      const safeCamY = Math.max(camY, groundAtCam + 0.6);
+
+      camera.position.set(camX, safeCamY, camZ);
+      camera.lookAt(cameraTarget);
+
+      // Rotate and hover world crystal containers gently
+      const time = clock.getElapsedTime();
+      if (obsidianContainer) {
+        obsidianContainer.rotation.y = time * 0.9;
+        obsidianContainer.position.y = getTerrainHeight(10, 10) + 0.9 + Math.sin(time * 2.5) * 0.1;
+      }
+      if (roseContainer) {
+        roseContainer.rotation.y = time * 0.85;
+        roseContainer.position.y = getTerrainHeight(-12, 4) + 1.1 + Math.sin(time * 2.2 + 1) * 0.1;
+      }
+      if (amethystContainer) {
+        amethystContainer.rotation.y = time * 0.75;
+        amethystContainer.position.y = getTerrainHeight(16, -14) + 1.2 + Math.sin(time * 2.0 + 2) * 0.12;
+      }
+      if (celestiteContainer) {
+        celestiteContainer.rotation.y = time * 0.65;
+        celestiteContainer.position.y = getTerrainHeight(-15, -16) + 1.4 + Math.sin(time * 1.8 + 3) * 0.14;
+      }
+
+      particleGeo.attributes.position.needsUpdate = true;
+
+      if (handCrystal) {
+        const s = 1.0 + Math.sin(clock.getElapsedTime() * 4) * 0.15;
+        handCrystal.scale.set(s, s, s);
+      }
+
+      checkProximityInteractions();
+
+      renderer.render(scene, camera);
+    }
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    window.onload = function() {
+      updateCrystalUI();
+      updateBackpackUI();
+      renderJournalTab('discoveries');
+      animate();
+    };
+  </script>
+</body>
+</html>
